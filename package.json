@@ -4,7 +4,8 @@
   "description": "QR attendance system with admin and student pages using Node + Express",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "deploy": "gh-pages -d public"
   },
   "dependencies": {
     "express": "^4.19.0"
