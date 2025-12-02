@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "express": "^4.19.0"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
   }
 }
