@@ -39,7 +39,7 @@ Git installed
 
 1. Clone the Repository
 bash
-git clone https://github.com/yourusername/qr-attendance.git
+git clone
 cd qr-attendance
 2. Install Dependencies
 bash
