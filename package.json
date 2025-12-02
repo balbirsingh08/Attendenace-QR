@@ -1,0 +1,12 @@
+{
+  "name": "qr-attendance-node",
+  "version": "1.0.0",
+  "description": "QR attendance system with admin and student pages using Node + Express",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>QR Attendance – Student</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">QR Attendance – Student</div>
+      <div class="subtitle">
+        This page is opened by scanning the QR shown by your teacher.
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>Mark Your Attendance</h2>
+        <p class="muted" id="sessionInfo">Checking session...</p>
+
+        <div id="formArea" style="display:none;">
+          <div class="field">
+            <label>Your Name</label>
+            <input id="studentName" placeholder="Your full name" />
+          </div>
+          <div class="field">
+            <label>Roll / ID (optional)</label>
+            <input id="studentRoll" placeholder="e.g., 21CS045" />
+          </div>
+          <div class="controls">
+            <button id="markBtn" class="btn primary">Mark Attendance</button>
+          </div>
+        </div>
+
+        <div id="statusMsg" class="muted"></div>
+      </section>
+    </main>
+
+    <footer>
+      <small>Do not reload this page multiple times after marking attendance.</small>
+    </footer>
+  </div>
+
+<script>
+function $(id){ return document.getElementById(id); }
+
+const params = new URLSearchParams(location.search);
+const sessionId = params.get('sessionId');
+
+const sessionInfo = $('sessionInfo');
+const formArea    = $('formArea');
+const nameInput   = $('studentName');
+const rollInput   = $('studentRoll');
+const markBtn     = $('markBtn');
+const statusMsg   = $('statusMsg');
+
+if (!sessionId) {
+  sessionInfo.textContent = 'No session ID found in URL. Please scan a valid QR code from your teacher.';
+} else {
+  sessionInfo.textContent = 'Session ID: ' + sessionId;
+  formArea.style.display = '';
+}
+
+async function markAttendance() {
+  if (!sessionId) return;
+  const name = nameInput.value.trim();
+  const roll = rollInput.value.trim();
+
+  if (!name) {
+    statusMsg.textContent = 'Name is required.';
+    return;
+  }
+
+  markBtn.disabled = true;
+  statusMsg.textContent = 'Submitting attendance...';
+
+  try {
+    const resp = await fetch('/api/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, name, roll })
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      statusMsg.textContent = data.error || 'Failed to mark attendance.';
+      markBtn.disabled = false;
+      return;
+    }
+
+    statusMsg.textContent = data.message || 'Attendance marked successfully.';
+  } catch (e) {
+    statusMsg.textContent = 'Network error while marking attendance.';
+    markBtn.disabled = false;
+  }
+}
+
+markBtn.addEventListener('click', markAttendance);
+</script>
+</body>
+</html>

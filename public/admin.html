@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>QR Attendance – Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">QR Attendance – Admin</div>
+      <div class="subtitle">
+        Admin can create sessions, show QR, and see live attendance records.
+      </div>
+    </header>
+
+    <main>
+      <section class="panel" id="adminPanel" style="display:none;">
+        <h2>Teacher Panel</h2>
+
+        <div class="field">
+          <label>Class / Course Name</label>
+          <input id="className" placeholder="e.g., CSE-101 - Data Structures" />
+        </div>
+
+        <div class="field two">
+          <div>
+            <label>Session Duration (seconds)</label>
+            <input id="duration" type="number" value="180" min="10" />
+          </div>
+          <div>
+            <label>Poll Interval (seconds)</label>
+            <input id="pollInterval" type="number" value="5" min="2" />
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="startSession" class="btn primary">Start Session</button>
+          <button id="stopSession" class="btn ghost">Stop Session</button>
+          <button id="downloadCSV" class="btn secondary">Download CSV</button>
+        </div>
+
+        <div class="qrArea">
+          <div id="qrcode"></div>
+          <div class="qrMeta">
+            <div>Session ID: <span id="sessionId">—</span></div>
+            <div>Student URL: <span id="studentUrl" class="muted">—</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="authError" style="display:none;">
+        <h2>Access Denied</h2>
+        <div class="auth-error">
+          Invalid admin key. Only students should access this page without a valid key.
+        </div>
+        <p class="muted">
+          If you are an admin, open this page with the correct key, for example:<br>
+          <code>?key=ADMIN123</code>
+        </p>
+      </section>
+
+      <section class="panel" id="recordsPanel" style="display:none;">
+        <h2>Attendance Records</h2>
+        <div id="recordsInfo" class="muted">No session started.</div>
+        <table id="recordsTable" class="recordsTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>Time (ISO)</th>
+              <th>Session</th>
+              <th>Name</th>
+              <th>Roll</th>
+            </tr>
+          </thead>
+          <tbody id="recordsBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <footer>
+      <small>Admin can also open the student page via the QR URL to test the flow.</small>
+    </footer>
+  </div>
+
+<script>
+const ADMIN_KEY = 'ADMIN123'; // change this for your setup
+
+function $(id){ return document.getElementById(id); }
+
+const classNameEl   = $('className');
+const durationEl    = $('duration');
+const pollIntervalEl= $('pollInterval');
+const startBtn      = $('startSession');
+const stopBtn       = $('stopSession');
+const downloadBtn   = $('downloadCSV');
+const qrcodeEl      = $('qrcode');
+const sessionIdEl   = $('sessionId');
+const studentUrlEl  = $('studentUrl');
+
+const recordsInfo   = $('recordsInfo');
+const recordsTable  = $('recordsTable');
+const recordsBody   = $('recordsBody');
+
+const adminPanel    = $('adminPanel');
+const authError     = $('authError');
+const recordsPanel  = $('recordsPanel');
+
+let currentSessionId = null;
+let pollTimer = null;
+let qr = null;
+
+function checkAuth() {
+  const params = new URLSearchParams(location.search);
+  const key = params.get('key');
+  if (key === ADMIN_KEY) {
+    adminPanel.style.display = '';
+    recordsPanel.style.display = '';
+    authError.style.display = 'none';
+  } else {
+    adminPanel.style.display = 'none';
+    recordsPanel.style.display = 'none';
+    authError.style.display = '';
+  }
+}
+
+async function createSession() {
+  const className = classNameEl.value.trim() || 'Unnamed Class';
+  const durationSeconds = parseInt(durationEl.value, 10) || 180;
+
+  const resp = await fetch('/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ className, durationSeconds })
+  });
+  if (!resp.ok) {
+    alert('Failed to create session');
+    return;
+  }
+  const data = await resp.json();
+  currentSessionId = data.sessionId;
+
+  const baseUrl = window.location.origin;
+  const studentUrl = baseUrl + '/student.html?sessionId=' + encodeURIComponent(currentSessionId);
+
+  qrcodeEl.innerHTML = '';
+  qr = new QRCode(qrcodeEl, {
+    text: studentUrl,
+    width: 200,
+    height: 200,
+    colorDark: "#000000",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.H
+  });
+
+  sessionIdEl.textContent = currentSessionId;
+  studentUrlEl.textContent = studentUrl;
+
+  startPolling();
+}
+
+async function fetchAttendance() {
+  if (!currentSessionId) return;
+  const resp = await fetch('/api/attendance?sessionId=' + encodeURIComponent(currentSessionId));
+  if (!resp.ok) return;
+  const data = await resp.json();
+  renderRecords(data);
+}
+
+function renderRecords(list) {
+  if (!list || list.length === 0) {
+    recordsInfo.textContent = 'No attendance yet for this session.';
+    recordsTable.style.display = 'none';
+    recordsBody.innerHTML = '';
+    return;
+  }
+  recordsInfo.textContent = 'Total records: ' + list.length;
+  recordsTable.style.display = '';
+  recordsBody.innerHTML = '';
+  list.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + r.time + '</td>' +
+      '<td>' + r.sessionId + '</td>' +
+      '<td>' + r.name + '</td>' +
+      '<td>' + (r.roll || '') + '</td>';
+    recordsBody.appendChild(tr);
+  });
+}
+
+function startPolling() {
+  stopPolling();
+  const pollSec = parseInt(pollIntervalEl.value, 10);
+  const delay = (Number.isFinite(pollSec) && pollSec >= 2 ? pollSec : 5) * 1000;
+  fetchAttendance();
+  pollTimer = setInterval(fetchAttendance, delay);
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+function stopSession() {
+  currentSessionId = null;
+  stopPolling();
+  qrcodeEl.innerHTML = '';
+  sessionIdEl.textContent = '—';
+  studentUrlEl.textContent = '—';
+  recordsInfo.textContent = 'No session started.';
+  recordsTable.style.display = 'none';
+  recordsBody.innerHTML = '';
+}
+
+async function downloadCSV() {
+  if (!currentSessionId) {
+    alert('No active session.');
+    return;
+  }
+  const url = '/api/attendance/csv?sessionId=' + encodeURIComponent(currentSessionId);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'attendance_' + currentSessionId + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// Events
+startBtn.addEventListener('click', () => createSession());
+stopBtn.addEventListener('click', () => stopSession());
+downloadBtn.addEventListener('click', () => downloadCSV());
+
+checkAuth();
+</script>
+</body>
+</html>
